@@ -2023,3 +2023,119 @@ button:disabled {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---------- Setores ---------- */
+.track-sector path {
+  fill: none;
+  stroke-width: 9;
+  stroke-linejoin: round;
+  stroke: #4a4a4a;
+  pointer-events: none;
+}
+
+.track-sector text {
+  font-size: 24px;
+  font-weight: 700;
+  fill: var(--muted);
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 6px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.track-sector.is-idle path {
+  stroke-width: 4;
+}
+
+.track-sector.is-pending path {
+  stroke: #333;
+}
+
+.track-sector.is-running path {
+  stroke: var(--text);
+  stroke-dasharray: 16 12;
+}
+
+.track-sector.is-running text {
+  fill: var(--text);
+}
+
+.track-sector.is-purple path { stroke: #c77dff; }
+.track-sector.is-green path { stroke: #43c463; }
+.track-sector.is-yellow path { stroke: #f5d03b; }
+.track-sector.is-purple text { fill: #c77dff; }
+.track-sector.is-green text { fill: #43c463; }
+.track-sector.is-yellow text { fill: #f5d03b; }
+
+.track-sector-tick {
+  stroke: var(--muted);
+  stroke-width: 4;
+  pointer-events: none;
+}
+
+.sector-chips {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.sector-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--panel-2);
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 6px 6px 0;
+  padding: 5px 8px;
+  min-width: 0;
+}
+
+.sector-chip span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.sector-chip strong {
+  font-size: 14px;
+}
+
+.sector-chip.is-total {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.sector-chip.is-purple { border-left-color: #c77dff; }
+.sector-chip.is-purple strong { color: #c77dff; }
+.sector-chip.is-green { border-left-color: #43c463; }
+.sector-chip.is-green strong { color: #43c463; }
+.sector-chip.is-yellow { border-left-color: #f5d03b; }
+.sector-chip.is-yellow strong { color: #f5d03b; }
+.sector-chip.is-running { border-left-color: var(--text); }
+.sector-chip.is-pending strong,
+.sector-chip.is-unknown strong {
+  color: var(--muted);
+}
+
+.sector-legend {
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+.sector-legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin: 0 3px 0 6px;
+}
+
+.sector-legend i:first-child {
+  margin-left: 0;
+}
+
+.sector-legend .is-purple { background: #c77dff; }
+.sector-legend .is-green { background: #43c463; }
+.sector-legend .is-yellow { background: #f5d03b; }

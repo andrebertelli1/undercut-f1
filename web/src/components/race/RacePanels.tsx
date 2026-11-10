@@ -3,6 +3,7 @@ import { t as i18n } from '../../i18n/index.ts';
 import { driverColor, formatLapTime } from '../../lib/race.ts';
 import type { RaceData, RaceEvent } from '../../lib/raceTypes.ts';
 import { lastIndexAtOrBefore, type FrameRow } from '../../lib/replay.ts';
+import type { SectorColor, SectorView } from '../../lib/sectors.ts';
 import type { Round, SeasonData } from '../../lib/types.ts';
 import { TeamBadge } from '../TeamBadge.tsx';
 import { gapText, Tyre } from './Tower.tsx';
@@ -13,12 +14,15 @@ export const DriverCard = memo(function DriverCard({
   frame,
   driver,
   sec,
+  sectors,
   onClose,
 }: {
   race: RaceData;
   frame: FrameRow[];
   driver: number;
   sec: number;
+  /** Setores da volta em andamento e da última volta; null se a corrida não tem esse dado. */
+  sectors: SectorView | null;
   onClose: () => void;
 }) {
   const index = frame.findIndex((r) => r.driver.number === driver);
@@ -69,6 +73,41 @@ export const DriverCard = memo(function DriverCard({
         </div>
       </dl>
 
+      {sectors && (
+        <>
+          <h3>{i18n.currentLap(sectors.lap)}</h3>
+          <div className="sector-chips">
+            {sectors.current.map((s, i) => (
+              <SectorChip key={i} label={i18n.sectorShort(i + 1)} state={s.state} color={s.color} time={s.time} />
+            ))}
+          </div>
+          {sectors.last && (
+            <>
+              <h3>{i18n.lastLapN(sectors.last.lap)}</h3>
+              <div className="sector-chips">
+                {[0, 1, 2].map((i) => (
+                  <SectorChip
+                    key={i}
+                    label={i18n.sectorShort(i + 1)}
+                    state={sectors.last!.sectors ? 'done' : 'pending'}
+                    color={sectors.last!.sectors?.colors[i] ?? null}
+                    time={sectors.last!.sectors?.times[i] ?? null}
+                  />
+                ))}
+                <div className={`sector-chip is-total is-${sectors.last.color ?? 'unknown'}`}>
+                  <span>{i18n.lapTotal}</span>
+                  <strong className="num">{formatLapTime(sectors.last.time)}</strong>
+                </div>
+              </div>
+            </>
+          )}
+          <p className="muted sector-legend">
+            <i className="is-purple" /> {i18n.legendPurple} <i className="is-green" /> {i18n.legendGreen}{' '}
+            <i className="is-yellow" /> {i18n.legendYellow}
+          </p>
+        </>
+      )}
+
       <h3>{i18n.tyres}</h3>
       <ul className="stints">
         {stints.map(([from, to, compound, age], i) => {
@@ -108,6 +147,28 @@ export const DriverCard = memo(function DriverCard({
     </section>
   );
 });
+
+function SectorChip({
+  label,
+  state,
+  color,
+  time,
+}: {
+  label: string;
+  state: 'done' | 'running' | 'pending';
+  color: SectorColor | null;
+  time: number | null;
+}) {
+  const tone = state === 'done' ? `is-${color ?? 'unknown'}` : `is-${state}`;
+  return (
+    <div className={`sector-chip ${tone}`}>
+      <span>{label}</span>
+      <strong className="num">
+        {state === 'done' && time !== null ? time.toFixed(3) : state === 'running' ? i18n.sectorRunning : '—'}
+      </strong>
+    </div>
+  );
+}
 
 const FEED_LIMIT = 40;
 
