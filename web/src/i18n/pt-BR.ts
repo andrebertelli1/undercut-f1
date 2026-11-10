@@ -142,6 +142,13 @@ export const ptBR = {
   },
   lapsLeft: (n: number) => (n === 0 ? 'última volta' : n === 1 ? 'falta 1 volta' : `faltam ${n} voltas`),
   openInReplay: 'Abrir este momento no replay',
+  sectorShort: (n: number) => `S${n}`,
+  sectorRunning: 'agora',
+  currentLap: (n: number) => `Volta ${n} · em andamento`,
+  lastLapN: (n: number) => `Volta ${n} · completa`,
+  legendPurple: 'melhor de todos',
+  legendGreen: 'melhor pessoal',
+  legendYellow: 'mais lento',
   estimatedPositions: 'Posição na pista estimada neste trecho',
   estimatedHelp:
     'A fonte de dados não tem o sinal de posição dos carros aqui. A posição na pista foi estimada pelos tempos de volta; a classificação e as distâncias continuam sendo as reais.',

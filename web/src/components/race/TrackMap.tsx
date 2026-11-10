@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { t as i18n } from '../../i18n/index.ts';
 import { driverColor, type LoadedRace } from '../../lib/race.ts';
+import type { Pt } from '../../lib/raceTypes.ts';
 import { pointAt, sampleU, type FrameRow } from '../../lib/replay.ts';
+import type { SectorView } from '../../lib/sectors.ts';
 
 const PAD = 70;
 const MAX_ZOOM = 6;
@@ -23,6 +25,7 @@ export function TrackMap({
   selected,
   onSelect,
   only,
+  sectors,
 }: {
   race: LoadedRace;
   t: number;
@@ -31,6 +34,8 @@ export function TrackMap({
   onSelect: (driver: number | null) => void;
   /** Mostra só estes pilotos, em versão compacta (aba Comparar). */
   only?: number[];
+  /** Limites dos setores e, com um piloto seguido, como ele está em cada um. */
+  sectors?: { bounds: [number, number]; view: SectorView | null } | null;
 }) {
   const { data, u, track } = race;
   const svg = useRef<SVGSVGElement>(null);
@@ -120,6 +125,7 @@ export function TrackMap({
         <path d={d} className="track-edge" />
         <path d={d} className="track-road" />
         <line x1={p0[0] - nx} y1={p0[1] - ny} x2={p0[0] + nx} y2={p0[1] + ny} className="track-finish" />
+        {sectors && !only && <SectorLayer points={track.points} bounds={sectors.bounds} view={sectors.view} />}
 
         {cars.map((row) => {
           const { driver } = row;
@@ -163,5 +169,62 @@ export function TrackMap({
         )}
       </div>}
     </>
+  );
+}
+
+/**
+ * Os três setores desenhados sobre a pista. Sem piloto seguido, só marca onde
+ * cada setor fica; com um piloto, pinta cada trecho com a cor do setor dele
+ * na volta em andamento.
+ */
+function SectorLayer({
+  points,
+  bounds,
+  view,
+}: {
+  points: Pt[];
+  bounds: [number, number];
+  view: SectorView | null;
+}) {
+  const n = points.length;
+  const cuts = [0, Math.round(bounds[0] * n), Math.round(bounds[1] * n), n];
+  const at = (i: number) => points[((i % n) + n) % n];
+  /** Vetor perpendicular à pista no ponto i, com o comprimento pedido. */
+  const normal = (i: number, length: number): Pt => {
+    const a = at(i - 1);
+    const b = at(i + 1);
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    return [(-(b[1] - a[1]) / len) * length, ((b[0] - a[0]) / len) * length];
+  };
+
+  return (
+    <g className="track-sectors">
+      {[0, 1, 2].map((s) => {
+        const pts: Pt[] = [];
+        for (let i = cuts[s]; i <= cuts[s + 1]; i++) pts.push(at(i));
+        const state = view?.current[s];
+        const tone = !state
+          ? 'is-idle'
+          : state.state === 'done'
+            ? `is-${state.color ?? 'unknown'}`
+            : `is-${state.state}`;
+        const mid = Math.round((cuts[s] + cuts[s + 1]) / 2);
+        const [mx, my] = at(mid);
+        const [ox, oy] = normal(mid, 46);
+        return (
+          <g key={s} className={`track-sector ${tone}`}>
+            <path d={`M${pts.map((p) => p.join(',')).join('L')}`} />
+            <text x={mx + ox} y={my + oy} dy="0.35em" textAnchor="middle">
+              {i18n.sectorShort(s + 1)}
+            </text>
+          </g>
+        );
+      })}
+      {[cuts[1], cuts[2]].map((i) => {
+        const [x, y] = at(i);
+        const [nx, ny] = normal(i, 20);
+        return <line key={i} x1={x - nx} y1={y - ny} x2={x + nx} y2={y + ny} className="track-sector-tick" />;
+      })}
+    </g>
   );
 }

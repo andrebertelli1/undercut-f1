@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { raceName, t as i18n } from '../../i18n/index.ts';
-import { loadRace, readWatchState, writeWatchState, type LoadedRace } from '../../lib/race.ts';
+import { loadRace, loadSectors, readWatchState, writeWatchState, type LoadedRace } from '../../lib/race.ts';
+import type { RaceSectors } from '../../lib/raceTypes.ts';
+import { buildSectorModel, sectorViewAt } from '../../lib/sectors.ts';
 import { frameAt, lapAt } from '../../lib/replay.ts';
 import type { Round, SeasonData } from '../../lib/types.ts';
 import { PlayerBar, type TrackStatus } from './PlayerBar.tsx';
@@ -79,6 +81,24 @@ function RaceScreen({ race, data, round, initialLap, onBack, onLapChange }: Prop
   const sec = Math.floor(player.t);
   const lap = lapAt(r.lapStarts, player.t);
   const frame = useMemo(() => frameAt(r, sec), [r, sec]);
+
+  // Setores: carregados à parte; sem o arquivo, a pista só não mostra os setores.
+  const [sectorData, setSectorData] = useState<RaceSectors | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    loadSectors(r.sessionKey).then((v) => !cancelled && setSectorData(v));
+    return () => {
+      cancelled = true;
+    };
+  }, [r.sessionKey]);
+  const sectorModel = useMemo(
+    () => (sectorData ? buildSectorModel(r, race.u, sectorData) : null),
+    [r, race.u, sectorData],
+  );
+  const sectorView = useMemo(
+    () => (sectorModel && selected !== null ? sectorViewAt(r, sectorModel, selected, sec) : null),
+    [r, sectorModel, selected, sec],
+  );
 
   // Guarda até onde o visitante já viu, para os marcadores não entregarem o que vem depois.
   useEffect(() => {
@@ -193,7 +213,14 @@ function RaceScreen({ race, data, round, initialLap, onBack, onLapChange }: Prop
             </div>
           )}
           {tab === 'track' && (
-            <TrackMap race={race} t={player.t} frame={frame} selected={selected} onSelect={setSelected} />
+            <TrackMap
+              race={race}
+              t={player.t}
+              frame={frame}
+              selected={selected}
+              onSelect={setSelected}
+              sectors={sectorModel ? { bounds: sectorModel.bounds, view: sectorView } : null}
+            />
           )}
           {tab === 'story' && <Story {...tabProps} />}
           {tab === 'compare' && (
@@ -219,6 +246,7 @@ function RaceScreen({ race, data, round, initialLap, onBack, onLapChange }: Prop
               frame={frame}
               driver={selected}
               sec={sec}
+              sectors={sectorView}
               onClose={() => setSelected(null)}
             />
           )}
