@@ -1,0 +1,4 @@
+node_modules/
+dist/
+.claude/
+ingest-log.txt
