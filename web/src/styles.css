@@ -2139,3 +2139,39 @@ button:disabled {
 .sector-legend .is-purple { background: #c77dff; }
 .sector-legend .is-green { background: #43c463; }
 .sector-legend .is-yellow { background: #f5d03b; }
+
+/* ---------- Sessões do fim de semana ---------- */
+.session-title {
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.session-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.session-buttons .ghost,
+.session-buttons .primary {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.bar-phases {
+  position: relative;
+  height: 16px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+
+.bar-phases span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 2px solid var(--line-strong);
+  padding-left: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+}

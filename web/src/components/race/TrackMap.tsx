@@ -132,10 +132,14 @@ export function TrackMap({
           const series = u[driver.number];
           if (!series) return null;
           if (driver.retiredAt !== null && t > driver.retiredAt + RETIRED_LINGER) return null;
-          const [x, y] = pointAt(track.points, sampleU(series, data.replay.start, data.replay.hz, t));
+          const at = (time: number) => sampleU(series, data.replay.start, data.replay.hz, time);
+          const [x, y] = pointAt(track.points, at(t));
+          // Em treino e classificação os carros passam boa parte do tempo
+          // parados no box: ficam vazados e sem etiqueta.
+          const parked = data.kind === 'timed' && Math.abs(at(t) - at(t - 4)) < 0.0004;
           const color = driverColor(driver);
           const isSelected = driver.number === selected;
-          const labelled = Boolean(only) || isSelected || (row.pos <= 3 && !row.retired);
+          const labelled = Boolean(only) || isSelected || (row.pos <= 3 && !row.retired && !parked);
           return (
             <g
               key={driver.number}
@@ -149,7 +153,7 @@ export function TrackMap({
               <title>{`${row.pos}. ${driver.name}`}</title>
               <circle r={26} className="car-hit" />
               {isSelected && <circle r={22} className="car-ring" />}
-              <circle r={13} className="car-dot" style={row.inPit ? { stroke: color } : { fill: color }} />
+              <circle r={13} className="car-dot" style={row.inPit || parked ? { stroke: color } : { fill: color }} />
               {labelled && (
                 <text y={-22} textAnchor="middle" className="car-label">
                   {driver.code}

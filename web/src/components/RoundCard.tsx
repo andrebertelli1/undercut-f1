@@ -11,14 +11,16 @@ export function RoundCard({
   round,
   asOf,
   onClose,
-  onWatch,
+  available,
+  onOpen,
 }: {
   data: SeasonData;
   round: Round;
   asOf: number;
   onClose: () => void;
-  /** Abre o replay; ausente quando a corrida ainda não tem replay. */
-  onWatch?: () => void;
+  /** session_keys que têm replay baixado. */
+  available: number[];
+  onOpen: (sessionKey: number) => void;
 }) {
   const shown = round.raceDone && round.round <= asOf;
   const hiddenByRewind = round.raceDone && !shown;
@@ -32,6 +34,12 @@ export function RoundCard({
   const pole = round.results.find((r) => r.grid === 1);
   const fl = round.fastestLap;
   const flRow = fl && round.results.find((r) => r.driverId === fl.driverId);
+  // Etapas sem a lista da OpenF1 ainda oferecem a corrida, se houver.
+  const sessions = round.sessions?.length
+    ? round.sessions
+    : round.sessionKey
+      ? [{ key: round.sessionKey, name: 'Race', start: round.date }]
+      : [];
   const sprintWin =
     round.sprintDone && round.round <= asOf ? byPos(round.sprintResults, 1) : undefined;
 
@@ -97,10 +105,22 @@ export function RoundCard({
               </div>
             )}
           </dl>
-          <button className="primary" disabled={!onWatch} onClick={onWatch}>
-            {t.watchRace}
-          </button>
-          {!onWatch && <span className="muted soon">{t.watchRaceSoon}</span>}
+          <div className="muted session-title">{t.weekendReplays}</div>
+          <div className="session-buttons">
+            {sessions.map((s) => (
+              <button
+                key={s.key}
+                className={s.name === 'Race' ? 'primary' : 'ghost'}
+                disabled={!available.includes(s.key)}
+                onClick={() => onOpen(s.key)}
+              >
+                {t.sessionName(s.name)}
+              </button>
+            ))}
+          </div>
+          {!sessions.some((s) => available.includes(s.key)) && (
+            <span className="muted soon">{t.watchRaceSoon}</span>
+          )}
         </>
       )}
     </div>

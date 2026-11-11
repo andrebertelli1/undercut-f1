@@ -72,7 +72,8 @@ async function main() {
   const raceResults = await jolpicaRaces(`${season}/results`);
   await sleep(300);
   const sprintResults = await jolpicaRaces(`${season}/sprint`);
-  const sessions: any[] = await getJson(`${OPENF1}/sessions?year=${season}&session_name=Race`);
+  const allSessions: any[] = await getJson(`${OPENF1}/sessions?year=${season}`);
+  const sessions = allSessions.filter((s) => s.session_name === 'Race');
 
   const drivers: Record<string, Driver> = {};
   const teams: Record<string, Team> = {};
@@ -132,6 +133,16 @@ async function main() {
         raceDone: rr.length > 0,
         sprintDone: sr.length > 0,
         sessionKey: session?.session_key ?? null,
+        sessions: session
+          ? allSessions
+              .filter((s) => s.meeting_key === session.meeting_key && !s.is_cancelled)
+              .sort((a, b) => Date.parse(a.date_start) - Date.parse(b.date_start))
+              .map((s) => ({
+                key: s.session_key,
+                name: s.session_name,
+                start: new Date(s.date_start).toISOString(),
+              }))
+          : [],
         results: rr.map(toRow),
         sprintResults: sr.map(toRow),
         fastestLap,

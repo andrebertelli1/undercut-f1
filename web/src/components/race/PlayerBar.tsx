@@ -3,6 +3,7 @@ import { t as i18n } from '../../i18n/index.ts';
 import { formatClock } from '../../lib/race.ts';
 import type { RaceData } from '../../lib/raceTypes.ts';
 import { barAtTime, lapAt, timeAtBar } from '../../lib/replay.ts';
+import { phaseAt } from '../../lib/timed.ts';
 import { SPEEDS, type Player } from './usePlayer.ts';
 
 export type TrackStatus = 'grid' | 'green' | 'sc' | 'vsc' | 'red' | 'chequered';
@@ -33,6 +34,9 @@ export function PlayerBar({
   const bar = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
   const lap = lapAt(lapStarts, player.t);
+  // Em treino e classificação a barra é dividida em minutos, não em voltas.
+  const timed = race.kind === 'timed';
+  const phase = timed ? phaseAt(race, player.t) : undefined;
   const pct = (time: number) => `${barAtTime(lapStarts, tEnd, time) * 100}%`;
 
   const markers = useMemo(() => buildMarkers(race), [race]);
@@ -57,7 +61,7 @@ export function PlayerBar({
     <section className="panel player" aria-label={i18n.player}>
       <div className="player-row">
         <div className="player-buttons">
-          <button className="ghost icon" onClick={prevLap} aria-label={i18n.prevLap} title={i18n.prevLap}>
+          <button className="ghost icon" onClick={prevLap} aria-label={timed ? i18n.prevMinute : i18n.prevLap} title={timed ? i18n.prevMinute : i18n.prevLap}>
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h2v10H3zM14 3v10L6 8z" /></svg>
           </button>
           <button
@@ -76,21 +80,30 @@ export function PlayerBar({
             className="ghost icon"
             onClick={() => toLap(lap + 1)}
             disabled={lap >= totalLaps}
-            aria-label={i18n.nextLap}
-            title={i18n.nextLap}
+            aria-label={timed ? i18n.nextMinute : i18n.nextLap}
+            title={timed ? i18n.nextMinute : i18n.nextLap}
           >
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11 3h2v10h-2zM2 3v10l8-5z" /></svg>
           </button>
         </div>
 
         <div className="player-lap">
-          <strong>{lap === 0 ? i18n.startingGrid : i18n.lapOf(lap, totalLaps)}</strong>
+          <strong>
+            {timed
+              ? lap === 0
+                ? i18n.sessionWaiting
+                : i18n.minuteOf(lap, totalLaps)
+              : lap === 0
+                ? i18n.startingGrid
+                : i18n.lapOf(lap, totalLaps)}
+          </strong>
           <span className="muted num">
             {formatClock(player.t)}
-            {lap >= 1 && ` · ${i18n.lapsLeft(totalLaps - lap)}`}
+            {!timed && lap >= 1 && ` · ${i18n.lapsLeft(totalLaps - lap)}`}
+            {phase && ` · ${phase.name}`}
           </span>
         </div>
-        <span className={`flag flag-${status}`}>{i18n.trackStatus[status]}</span>
+        <span className={`flag flag-${status}`}>{timed && status === 'grid' ? i18n.sessionWaiting : i18n.trackStatus[status]}</span>
 
         <div className="speeds" role="group" aria-label={i18n.speed}>
           {SPEEDS.map((s) => (
@@ -106,6 +119,15 @@ export function PlayerBar({
         </div>
       </div>
 
+      {race.phases && (
+        <div className="bar-phases muted" aria-hidden="true">
+          {race.phases.map((p) => (
+            <span key={p.name} style={{ left: pct(p.from), width: `calc(${pct(p.to)} - ${pct(p.from)})` }}>
+              {p.name}
+            </span>
+          ))}
+        </div>
+      )}
       <div
         className="bar"
         ref={bar}
@@ -166,11 +188,11 @@ export function PlayerBar({
       </div>
 
       <div className="bar-legend muted">
-        <span><i className="marker-lead" /> {i18n.legendLead}</span>
-        <span><i className="marker-pit" /> {i18n.legendPit}</span>
+        <span><i className="marker-lead" /> {timed ? i18n.legendLeadTimed : i18n.legendLead}</span>
+        {!timed && <span><i className="marker-pit" /> {i18n.legendPit}</span>}
         <span><i className="period-sc" /> {i18n.trackStatus.sc}</span>
         <span><i className="period-red" /> {i18n.trackStatus.red}</span>
-        <span className="bar-keys">{i18n.keysHint}</span>
+        <span className="bar-keys">{timed ? i18n.keysHintTimed : i18n.keysHint}</span>
       </div>
     </section>
   );

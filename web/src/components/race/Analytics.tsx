@@ -32,10 +32,12 @@ export function Analytics(props: TabProps) {
         <SpoilerNote onReveal={onReveal}>{i18n.strategyLimited(Math.max(1, limitLap))}</SpoilerNote>
       )}
 
-      <section>
-        <h2>{i18n.lapChartTitle}</h2>
-        <LapChart {...props} />
-      </section>
+      {race.kind !== 'timed' && (
+        <section>
+          <h2>{i18n.lapChartTitle}</h2>
+          <LapChart {...props} />
+        </section>
+      )}
 
       <div className="two-up">
         <section>
