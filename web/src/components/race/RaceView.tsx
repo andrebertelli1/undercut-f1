@@ -3,27 +3,34 @@ import { raceName, t as i18n } from '../../i18n/index.ts';
 import { loadRace, loadSectors, readWatchState, writeWatchState, type LoadedRace } from '../../lib/race.ts';
 import type { RaceSectors } from '../../lib/raceTypes.ts';
 import { buildSectorModel, sectorViewAt } from '../../lib/sectors.ts';
+import { driverColor, formatLapTime } from '../../lib/race.ts';
 import { frameAt, lapAt } from '../../lib/replay.ts';
+import { timedBoard } from '../../lib/timed.ts';
+import { teamStyle } from '../../lib/teams.ts';
 import type { Round, SeasonData } from '../../lib/types.ts';
 import { PlayerBar, type TrackStatus } from './PlayerBar.tsx';
-import { DriverCard, RaceFeed, ResultPanel } from './RacePanels.tsx';
+import { DriverCard, RaceFeed, ResultPanel, type ResultRow } from './RacePanels.tsx';
 import { Analytics } from './Analytics.tsx';
 import { Compare } from './Compare.tsx';
 import type { TabProps } from './shared.tsx';
 import { Story } from './Story.tsx';
 import { Strategy } from './Strategy.tsx';
 import { WhatIf } from './WhatIf.tsx';
-import { Tower } from './Tower.tsx';
+import { timedText, Tower } from './Tower.tsx';
 import { TrackMap } from './TrackMap.tsx';
 import { usePlayer } from './usePlayer.ts';
 
 const SEEK_STEP = 10;
 const TABS = ['track', 'story', 'compare', 'strategy', 'whatif', 'analytics'] as const;
 type TabId = (typeof TABS)[number];
+/** Estratégia e simulação só fazem sentido em corrida. */
+const TIMED_TABS: TabId[] = ['track', 'story', 'compare', 'analytics'];
 
 interface Props {
   data: SeasonData;
   round: Round;
+  /** Sessão a mostrar (corrida, sprint, classificação ou treino). */
+  sessionKey: number | null;
   /** Volta pedida no link (?volta=23). */
   initialLap: number | null;
   onBack: () => void;
@@ -32,7 +39,7 @@ interface Props {
 
 /** Carrega o replay e mostra a tela da corrida. */
 export function RaceView(props: Props) {
-  const key = props.round.sessionKey;
+  const key = props.sessionKey;
   const [race, setRace] = useState<LoadedRace | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -81,6 +88,8 @@ function RaceScreen({ race, data, round, initialLap, onBack, onLapChange }: Prop
   const sec = Math.floor(player.t);
   const lap = lapAt(r.lapStarts, player.t);
   const frame = useMemo(() => frameAt(r, sec), [r, sec]);
+  const timed = r.kind === 'timed';
+  const board = useMemo(() => (timed ? timedBoard(r, sec) : null), [r, sec, timed]);
 
   // Setores: carregados à parte; sem o arquivo, a pista só não mostra os setores.
   const [sectorData, setSectorData] = useState<RaceSectors | null>(null);
@@ -142,6 +151,37 @@ function RaceScreen({ race, data, round, initialLap, onBack, onLapChange }: Prop
   const finished = sec >= winnerFinish;
   const showResult = revealed || finished;
 
+  // Resultado da sessão: o oficial para corrida e sprint; a tabela final nas cronometradas.
+  const resultRows = useMemo((): ResultRow[] => {
+    if (timed) {
+      const final = timedBoard(r, r.tEnd);
+      return frameAt(r, r.tEnd)
+        .slice(0, 10)
+        .map((row) => ({
+          pos: row.pos,
+          name: row.driver.name,
+          color: driverColor(row.driver),
+          value: timedText(final.get(row.driver.number)),
+        }));
+    }
+    const official = r.sessionKey === round.sessionKey ? round.results : round.sprintResults;
+    return official
+      .filter((row) => row.pos !== null)
+      .slice(0, 10)
+      .map((row) => ({
+        pos: row.pos!,
+        name: data.drivers[row.driverId]?.name ?? row.driverId,
+        color: teamStyle(row.teamId).color,
+        value: row.points > 0 ? `${row.points} ${row.points === 1 ? i18n.point : i18n.points}` : '',
+      }));
+  }, [r, round, data, timed]);
+  const resultTitle = timed
+    ? i18n.finalOrder
+    : r.sessionKey === round.sessionKey
+      ? i18n.officialResult
+      : i18n.sprintResult;
+  const tabs = timed ? TIMED_TABS : TABS;
+
   // Par da aba Comparar: por padrão o piloto seguido (ou o líder) e o seguinte.
   const first = frame[0]?.driver.number;
   const pairA = pair?.[0] ?? selected ?? first;
@@ -176,6 +216,7 @@ function RaceScreen({ race, data, round, initialLap, onBack, onLapChange }: Prop
         <h1 className="headline serif">
           {raceName(r.raceName)}
           <span className="muted">
+            {r.sessionName && r.sessionName !== 'Race' ? `${i18n.sessionName(r.sessionName)} · ` : ''}
             {i18n.round(r.round)} · {r.circuitName}
           </span>
         </h1>
@@ -190,12 +231,12 @@ function RaceScreen({ race, data, round, initialLap, onBack, onLapChange }: Prop
 
       <div className="race-columns">
         <aside className="col">
-          <Tower frame={frame} started={sec >= 0} selected={selected} onSelect={setSelected} />
+          <Tower frame={frame} started={sec >= 0} board={board} selected={selected} onSelect={setSelected} />
         </aside>
 
         <section className="stage">
           <div className="pills" role="tablist" aria-label={i18n.raceTabs}>
-            {TABS.map((id) => (
+            {tabs.map((id) => (
               <button
                 key={id}
                 role="tab"
@@ -247,10 +288,17 @@ function RaceScreen({ race, data, round, initialLap, onBack, onLapChange }: Prop
               driver={selected}
               sec={sec}
               sectors={sectorView}
+              timedBest={
+                board
+                  ? board.get(selected)?.best != null
+                    ? formatLapTime(board.get(selected)!.best!)
+                    : null
+                  : undefined
+              }
               onClose={() => setSelected(null)}
             />
           )}
-          {showResult && <ResultPanel data={data} round={round} />}
+          {showResult && <ResultPanel title={resultTitle} rows={resultRows} />}
           <RaceFeed race={r} sec={sec} onSeek={player.seek} />
         </aside>
       </div>

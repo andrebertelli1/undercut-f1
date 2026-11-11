@@ -39,7 +39,9 @@ export type EventKind =
   // Só na aba História (calculados no site, não vêm no arquivo):
   | 'overtake'
   | 'finalLaps'
-  | 'finish';
+  | 'finish'
+  /** Início de uma fase da classificação; o nome vem em `reason`. */
+  | 'phase';
 
 export interface RaceEvent {
   t: number;
@@ -84,6 +86,16 @@ export type RaceSectors = Record<string, [number, number, number, number][]>;
 
 export interface RaceData {
   version: 1;
+  /**
+   * "race": corrida ou sprint, com largada, voltas do líder e distâncias.
+   * "timed": treino ou classificação, onde vale a melhor volta de cada um.
+   * Nas sessões "timed", lapStarts marca minutos em vez de voltas.
+   */
+  kind?: 'race' | 'timed';
+  /** Nome da sessão na OpenF1 ("Sprint", "Qualifying", "Practice 1"...). */
+  sessionName?: string;
+  /** Fases da classificação (Q1, Q2, Q3), quando houver. */
+  phases?: { name: string; from: number; to: number }[];
   season: number;
   round: number;
   sessionKey: number;

@@ -22,6 +22,8 @@ const CURRENT_SEASON = SEASONS[0];
 interface Route {
   season: number;
   race: number | null;
+  /** Sessão do fim de semana (session_key); null = a corrida. */
+  session: number | null;
   lap: number | null;
 }
 
@@ -35,6 +37,7 @@ function readRoute(): Route {
   return {
     season: season && SEASONS.includes(season) ? season : CURRENT_SEASON,
     race: num('corrida'),
+    session: num('sessao'),
     lap: num('volta'),
   };
 }
@@ -43,6 +46,7 @@ function writeRoute(route: Route, replace: boolean) {
   const q = new URLSearchParams();
   if (route.season !== CURRENT_SEASON) q.set('temporada', String(route.season));
   if (route.race) q.set('corrida', String(route.race));
+  if (route.race && route.session) q.set('sessao', String(route.session));
   if (route.race && route.lap) q.set('volta', String(route.lap));
   const url = `${location.pathname}${q.size ? `?${q}` : ''}`;
   if (replace) history.replaceState(null, '', url);
@@ -70,18 +74,25 @@ export function App() {
     writeRoute(next, false);
     setRoute(next);
   }, []);
-  const openRace = useCallback((race: number) => go({ season, race, lap: null }), [go, season]);
-  const closeRace = useCallback(() => go({ season, race: null, lap: null }), [go, season]);
+  const openRace = useCallback(
+    (race: number, session: number | null = null) => go({ season, race, session, lap: null }),
+    [go, season],
+  );
+  const closeRace = useCallback(
+    () => go({ season, race: null, session: null, lap: null }),
+    [go, season],
+  );
   const changeSeason = (year: number) => {
     setAsOf(null);
     setFocus(null);
-    go({ season: year, race: null, lap: null });
+    go({ season: year, race: null, session: null, lap: null });
   };
   // A volta atual vai para o endereço sem criar entradas no histórico.
   const raceRound = route.race;
+  const raceSession = route.session;
   const onLapChange = useCallback(
-    (lap: number) => writeRoute({ season, race: raceRound, lap }, true),
-    [raceRound, season],
+    (lap: number) => writeRoute({ season, race: raceRound, session: raceSession, lap }, true),
+    [raceRound, raceSession, season],
   );
 
   useEffect(() => {
@@ -124,6 +135,7 @@ export function App() {
       <RaceView
         data={data}
         round={raceToShow}
+        sessionKey={route.session ?? raceToShow.sessionKey}
         initialLap={route.lap}
         onBack={closeRace}
         onLapChange={onLapChange}
@@ -199,7 +211,8 @@ export function App() {
               round={focused}
               asOf={round}
               onClose={() => setFocus(null)}
-              onWatch={hasReplay(focused.sessionKey) ? () => openRace(focused.round) : undefined}
+              available={replays}
+              onOpen={(key) => openRace(focused.round, key === focused.sessionKey ? null : key)}
             />
           )}
         </WorldMap>

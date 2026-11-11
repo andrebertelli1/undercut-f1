@@ -4,8 +4,6 @@ import { driverColor, formatLapTime } from '../../lib/race.ts';
 import type { RaceData, RaceEvent } from '../../lib/raceTypes.ts';
 import { lastIndexAtOrBefore, type FrameRow } from '../../lib/replay.ts';
 import type { SectorColor, SectorView } from '../../lib/sectors.ts';
-import type { Round, SeasonData } from '../../lib/types.ts';
-import { TeamBadge } from '../TeamBadge.tsx';
 import { gapText, Tyre } from './Tower.tsx';
 
 /** Detalhes do piloto seguido, só com o que já aconteceu até o instante atual. */
@@ -15,6 +13,7 @@ export const DriverCard = memo(function DriverCard({
   driver,
   sec,
   sectors,
+  timedBest,
   onClose,
 }: {
   race: RaceData;
@@ -23,6 +22,8 @@ export const DriverCard = memo(function DriverCard({
   sec: number;
   /** Setores da volta em andamento e da última volta; null se a corrida não tem esse dado. */
   sectors: SectorView | null;
+  /** Em treino e classificação: a melhor volta do piloto (null se ainda não tem). */
+  timedBest?: string | null;
   onClose: () => void;
 }) {
   const index = frame.findIndex((r) => r.driver.number === driver);
@@ -60,8 +61,10 @@ export const DriverCard = memo(function DriverCard({
           <dd className="num">{row.retired ? i18n.out : `${row.pos}º`}</dd>
         </div>
         <div>
-          <dt>{i18n.gapToLeader}</dt>
-          <dd className="num">{gapText(row, sec >= 0) || '—'}</dd>
+          <dt>{timedBest !== undefined ? i18n.bestLap : i18n.gapToLeader}</dt>
+          <dd className="num">
+            {timedBest !== undefined ? (timedBest ?? '—') : gapText(row, sec >= 0) || '—'}
+          </dd>
         </div>
         <div>
           <dt>{i18n.carAhead}</dt>
@@ -215,25 +218,28 @@ export const RaceFeed = memo(function RaceFeed({
   );
 });
 
-/** Classificação oficial, mostrada só depois de "Ver resultado". */
-export function ResultPanel({ data, round }: { data: SeasonData; round: Round }) {
+export interface ResultRow {
+  pos: number;
+  name: string;
+  color: string;
+  value: string;
+}
+
+/** Resultado da sessão, mostrado só depois de "Ver resultado" ou ao fim do replay. */
+export function ResultPanel({ title, rows }: { title: string; rows: ResultRow[] }) {
+  if (rows.length === 0) return null;
   return (
     <section className="panel result">
-      <h2>{i18n.officialResult}</h2>
+      <h2>{title}</h2>
       <ol className="rows">
-        {round.results
-          .filter((r) => r.pos !== null)
-          .slice(0, 10)
-          .map((r) => (
-            <li className="row" key={r.driverId}>
-              <span className="pos">{r.pos}</span>
-              <TeamBadge teamId={r.teamId} />
-              <span className="row-main">{data.drivers[r.driverId]?.name}</span>
-              <span className="num muted">
-                {r.points > 0 ? `${r.points} ${r.points === 1 ? i18n.point : i18n.points}` : ''}
-              </span>
-            </li>
-          ))}
+        {rows.map((r) => (
+          <li className="row" key={r.pos + r.name}>
+            <span className="pos">{r.pos}</span>
+            <span className="team-stripe" style={{ background: r.color }} />
+            <span className="row-main">{r.name}</span>
+            <span className="num muted">{r.value}</span>
+          </li>
+        ))}
       </ol>
     </section>
   );

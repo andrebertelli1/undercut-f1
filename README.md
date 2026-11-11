@@ -32,8 +32,11 @@ npm test                          # testes da lógica
 npm run build                     # versão de produção em web/dist
 npm run ingest:season -- 2026     # atualiza o campeonato de um ano
 npm run ingest:race -- 2026 21    # baixa o replay de uma etapa
-npm run ingest:race -- 2026 all   # baixa todas as etapas que faltam
-node ingest/sectors.ts            # tempos de setor das corridas baixadas
+npm run ingest:race -- 2026 all   # baixa todas as corridas que faltam
+npm run ingest:race -- 2026 all --sprint            # as sprints
+npm run ingest:timed -- 2026 all                    # as classificações
+npm run ingest:timed -- 2026 20 --sessions=FP1,FP2,FP3   # treinos de uma etapa
+node ingest/sectors.ts            # tempos de setor das sessões baixadas
 ```
 
 ## Como funciona
@@ -41,7 +44,8 @@ node ingest/sectors.ts            # tempos de setor das corridas baixadas
 O navegador nunca chama as APIs de dados. Os scripts em `ingest/` buscam os dados, processam e gravam arquivos JSON em `web/public/data/`; o site só lê esses arquivos.
 
 - `ingest/season.ts`: calendário, resultados e classificações (Jolpica).
-- `ingest/race.ts`: replay de uma corrida (OpenF1). A posição de cada carro vira "distância percorrida ao longo do traçado", o que deixa o arquivo pequeno e faz os carros seguirem as curvas.
+- `ingest/timed.ts`: replay de treinos e classificações, onde vale a melhor volta e não a ordem de chegada.
+- `ingest/race.ts`: replay de uma corrida ou sprint (OpenF1). A posição de cada carro vira "distância percorrida ao longo do traçado", o que deixa o arquivo pequeno e faz os carros seguirem as curvas.
 - `web/src/lib/`: lógica pura, com testes: pontuação, leitura do replay e as análises (história, pits, simulação).
 - `web/src/components/`: a interface, em React.
 

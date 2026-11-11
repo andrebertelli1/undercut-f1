@@ -3,10 +3,13 @@
 //
 // Uso: node ingest/race.ts <ano> <etapa>...   ex.: node ingest/race.ts 2026 20
 //      node ingest/race.ts <ano> all          todas as disputadas que ainda faltam
+//      node ingest/race.ts <ano> all --sprint as sprints, em vez das corridas
+//
+// As funções exportadas também servem a ingest/timed.ts (treinos e classificação).
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type {
   EventKind,
   Pt,
@@ -25,25 +28,25 @@ import {
   unwrap,
   anchorToLaps,
 } from '../web/src/lib/replay.ts';
-import type { Round, SeasonData } from '../web/src/lib/types.ts';
+import type { Round, SeasonData, SessionRef } from '../web/src/lib/types.ts';
 
 const OPENF1 = 'https://api.openf1.org/v1';
-const DATA = resolve(dirname(fileURLToPath(import.meta.url)), '../web/public/data');
+export const DATA = resolve(dirname(fileURLToPath(import.meta.url)), '../web/public/data');
 /** Limite gratuito da OpenF1: 30 pedidos por minuto. */
 const REQUEST_GAP_MS = 2100;
 
 const TRACK_POINTS = 1000;
 const TRACK_BOX = 1000;
-const HZ = 1;
-const SCALE = 4000;
-const LEAD_IN = 10;
-const LEAD_OUT = 30;
+export const HZ = 1;
+export const SCALE = 4000;
+export const LEAD_IN = 10;
+export const LEAD_OUT = 30;
 const MAX_PIT_LANE = 300;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let lastRequest = 0;
 
-async function openf1(path: string, attempt = 1): Promise<any[]> {
+export async function openf1(path: string, attempt = 1): Promise<any[]> {
   const wait = lastRequest + REQUEST_GAP_MS - Date.now();
   if (wait > 0) await sleep(wait);
   lastRequest = Date.now();
@@ -59,7 +62,7 @@ async function openf1(path: string, attempt = 1): Promise<any[]> {
 }
 
 /** Nome da equipe na OpenF1 -> id da equipe na Jolpica. */
-function teamIdFor(name: string): string | null {
+export function teamIdFor(name: string): string | null {
   const n = name.toLowerCase();
   const table: [string, string][] = [
     ['red bull', 'red_bull'],
@@ -78,15 +81,107 @@ function teamIdFor(name: string): string | null {
   return table.find(([needle]) => n.includes(needle))?.[1] ?? null;
 }
 
-const round1 = (n: number) => Math.round(n * 10) / 10;
-const round3 = (n: number) => Math.round(n * 1000) / 1000;
+export const round1 = (n: number) => Math.round(n * 10) / 10;
+export const round3 = (n: number) => Math.round(n * 1000) / 1000;
 /** Data no formato que a OpenF1 aceita em filtros (UTC, sem fuso). */
-const filterDate = (ms: number) => new Date(ms).toISOString().slice(0, 23);
+export const filterDate = (ms: number) => new Date(ms).toISOString().slice(0, 23);
 
-async function ingestRace(season: number, round: Round): Promise<void> {
-  const S = round.sessionKey;
-  if (!S) throw new Error(`Etapa ${round.round} sem session_key`);
-  console.log(`\nEtapa ${round.round} · ${round.raceName} (sessão ${S})`);
+export type Location = Record<string, { t: number[]; x: number[]; y: number[] }>;
+
+/** Baixa a posição de cada carro entre `from` e `to` (segundos em relação a t0). */
+export async function fetchLocations(
+  S: number,
+  driversRaw: any[],
+  t0: number,
+  from: number,
+  to: number,
+): Promise<Location> {
+  const a = filterDate(t0 + from * 1000);
+  const b = filterDate(t0 + to * 1000);
+  const location: Location = {};
+  for (const d of driversRaw) {
+    const rows = await openf1(
+      `location?session_key=${S}&driver_number=${d.driver_number}&date>=${a}&date<=${b}`,
+    );
+    const loc = { t: [] as number[], x: [] as number[], y: [] as number[] };
+    for (const r of rows) {
+      if (r.x === 0 && r.y === 0) continue;
+      loc.t.push((Date.parse(r.date) - t0) / 1000);
+      loc.x.push(r.x);
+      loc.y.push(r.y);
+    }
+    location[d.driver_number] = loc;
+    process.stdout.write(`  posições ${d.name_acronym}: ${loc.t.length}\r`);
+  }
+  process.stdout.write('\n');
+  return location;
+}
+
+/**
+ * Desenha o traçado a partir da volta mais rápida da sessão que tenha sinal
+ * de posição do começo ao fim. Devolve a linha nas unidades originais (para
+ * projetar os carros) e a versão normalizada para o site.
+ */
+export function buildTrack(
+  lapsRaw: any[],
+  location: Location,
+  T: (date: string) => number,
+): { line: Pt[]; track: RaceData['track'] } {
+  let rawLine: Pt[] = [];
+  for (const l of lapsRaw
+    .filter((l) => l.lap_duration && l.date_start && !l.is_pit_out_lap && l.lap_number > 1)
+    .sort((a, b) => a.lap_duration - b.lap_duration)) {
+    const loc = location[l.driver_number];
+    const a = T(l.date_start);
+    const b = a + l.lap_duration;
+    const pts: Pt[] = [];
+    loc?.t.forEach((t, i) => {
+      if (t >= a && t < b) pts.push([loc.x[i], loc.y[i]]);
+    });
+    // A OpenF1 amostra a ~3,7 Hz: exige pelo menos 2,5 amostras por segundo.
+    if (pts.length >= l.lap_duration * 2.5) {
+      rawLine = pts;
+      break;
+    }
+  }
+  if (rawLine.length === 0) {
+    throw new Error('Não achei uma volta com sinal completo para desenhar o traçado.');
+  }
+  const line = smoothClosed(resampleClosed(rawLine, TRACK_POINTS), 2);
+
+  // Normaliza para uma caixa de TRACK_BOX, com o eixo y para baixo (SVG).
+  const xs = line.map((p) => p[0]);
+  const ys = line.map((p) => p[1]);
+  const minX = Math.min(...xs);
+  const maxY = Math.max(...ys);
+  const k = TRACK_BOX / Math.max(Math.max(...xs) - minX, maxY - Math.min(...ys));
+  const track = {
+    points: line.map(([x, y]) => [Math.round((x - minX) * k), Math.round((maxY - y) * k)] as Pt),
+    width: Math.round((Math.max(...xs) - minX) * k),
+    height: Math.round((maxY - Math.min(...ys)) * k),
+  };
+  return { line, track };
+}
+
+/** Acrescenta uma sessão à lista das que têm replay. */
+export async function addToIndex(key: number): Promise<void> {
+  const indexPath = `${DATA}/race/index.json`;
+  let index: number[] = [];
+  try {
+    index = JSON.parse(await readFile(indexPath, 'utf8'));
+  } catch {
+    // primeira sessão ingerida
+  }
+  if (index.includes(key)) return;
+  index.push(key);
+  await mkdir(dirname(indexPath), { recursive: true });
+  await writeFile(indexPath, JSON.stringify(index.sort((a, b) => a - b)));
+}
+
+/** Ingere uma corrida ou uma sprint (as duas têm largada, voltas e distâncias). */
+async function ingestRace(season: number, round: Round, session: SessionRef): Promise<void> {
+  const S = session.key;
+  console.log(`\nEtapa ${round.round} · ${round.raceName} · ${session.name} (sessão ${S})`);
 
   const [driversRaw, lapsRaw, stintsRaw, pitsRaw, controlRaw, positionsRaw, intervalsRaw, weatherRaw] = [
     await openf1(`drivers?session_key=${S}`),
@@ -169,65 +264,9 @@ async function ingestRace(season: number, round: Round): Promise<void> {
   const tEnd = Math.ceil(lastFinish + LEAD_OUT);
   const samples = Math.floor((tEnd - tStart) * HZ) + 1;
 
-  // --- Posição na pista ---
-  const from = filterDate(t0 + (tStart - 5) * 1000);
-  const to = filterDate(t0 + (tEnd + 5) * 1000);
-  const location: Record<string, { t: number[]; x: number[]; y: number[] }> = {};
-  for (const d of driversRaw) {
-    const rows = await openf1(
-      `location?session_key=${S}&driver_number=${d.driver_number}&date>=${from}&date<=${to}`,
-    );
-    const loc = { t: [] as number[], x: [] as number[], y: [] as number[] };
-    for (const r of rows) {
-      if (r.x === 0 && r.y === 0) continue;
-      loc.t.push(T(r.date));
-      loc.x.push(r.x);
-      loc.y.push(r.y);
-    }
-    location[d.driver_number] = loc;
-    process.stdout.write(`  posições ${d.name_acronym}: ${loc.t.length}\r`);
-  }
-  process.stdout.write('\n');
-
-  // --- Traçado: a volta mais rápida da corrida ---
-  // (a primeira das mais rápidas que tenha sinal de posição do começo ao fim)
-  const samplesIn = (l: any): Pt[] => {
-    const loc = location[l.driver_number];
-    const a = T(l.date_start);
-    const b = a + l.lap_duration;
-    const pts: Pt[] = [];
-    loc?.t.forEach((t, i) => {
-      if (t >= a && t < b) pts.push([loc.x[i], loc.y[i]]);
-    });
-    return pts;
-  };
-  let rawLine: Pt[] = [];
-  let fastest: any = null;
-  for (const l of lapsRaw
-    .filter((l) => l.lap_duration && l.date_start && !l.is_pit_out_lap && l.lap_number > 1)
-    .sort((a, b) => a.lap_duration - b.lap_duration)) {
-    const pts = samplesIn(l);
-    // A OpenF1 amostra a ~3,7 Hz: exige pelo menos 2,5 amostras por segundo.
-    if (pts.length >= l.lap_duration * 2.5) {
-      rawLine = pts;
-      fastest = l;
-      break;
-    }
-  }
-  if (!fastest) throw new Error('Não achei uma volta com sinal completo para desenhar o traçado.');
-  const line = smoothClosed(resampleClosed(rawLine, TRACK_POINTS), 2);
-
-  // Normaliza para uma caixa de TRACK_BOX, com o eixo y para baixo (SVG).
-  const xs = line.map((p) => p[0]);
-  const ys = line.map((p) => p[1]);
-  const minX = Math.min(...xs);
-  const maxY = Math.max(...ys);
-  const k = TRACK_BOX / Math.max(Math.max(...xs) - minX, maxY - Math.min(...ys));
-  const track = {
-    points: line.map(([x, y]) => [Math.round((x - minX) * k), Math.round((maxY - y) * k)] as Pt),
-    width: Math.round((Math.max(...xs) - minX) * k),
-    height: Math.round((maxY - Math.min(...ys)) * k),
-  };
+  // --- Posição na pista e traçado ---
+  const location = await fetchLocations(S, driversRaw, t0, tStart - 5, tEnd + 5);
+  const { line, track } = buildTrack(lapsRaw, location, T);
 
   // --- Distância ao longo do traçado, por piloto ---
   const u: RaceData['replay']['u'] = {};
@@ -344,6 +383,8 @@ async function ingestRace(season: number, round: Round): Promise<void> {
 
   const race: RaceData = {
     version: 1,
+    kind: 'race',
+    sessionName: session.name,
     season,
     round: round.round,
     sessionKey: S,
@@ -400,7 +441,7 @@ const TELEMETRY_POINTS = 200;
  * Grava a telemetria (velocidade, acelerador, freio) da melhor volta de cada
  * piloto, em função da distância na volta, para a comparação entre pilotos.
  */
-async function writeTelemetry(
+export async function writeTelemetry(
   S: number,
   drivers: RaceDriver[],
   lapsRaw: any[],
@@ -482,7 +523,7 @@ async function writeTelemetry(
   );
 }
 
-function lapNumberAt(lapStarts: number[], t: number): number {
+export function lapNumberAt(lapStarts: number[], t: number): number {
   let lap = 0;
   for (let i = 0; i < lapStarts.length && lapStarts[i] <= t; i++) lap = i + 1;
   return lap;
@@ -544,7 +585,7 @@ function fillSignalGaps(
 }
 
 /** Converte as mensagens do controle de prova em eventos e períodos de neutralização. */
-function buildEvents(
+export function buildEvents(
   control: any[],
   T: (date: string) => number,
   tEnd: number,
@@ -637,25 +678,33 @@ function buildEvents(
 }
 
 async function main() {
-  const season = Number(process.argv[2]);
-  const wanted = process.argv.slice(3);
+  const args = process.argv.slice(2);
+  const sprint = args.includes('--sprint');
+  const [seasonArg, ...wanted] = args.filter((a) => !a.startsWith('--'));
+  const season = Number(seasonArg);
   if (!season || wanted.length === 0) {
-    console.error('Uso: node ingest/race.ts <ano> <etapa>... | all');
+    console.error('Uso: node ingest/race.ts <ano> <etapa>... | all [--sprint]');
     process.exit(1);
   }
   const data: SeasonData = JSON.parse(await readFile(`${DATA}/season/${season}.json`, 'utf8'));
-
-  const indexPath = `${DATA}/race/index.json`;
   let index: number[] = [];
   try {
-    index = JSON.parse(await readFile(indexPath, 'utf8'));
+    index = JSON.parse(await readFile(`${DATA}/race/index.json`, 'utf8'));
   } catch {
-    // primeira corrida ingerida
+    // nenhuma sessão ingerida ainda
   }
+
+  const sessionOf = (r: Round): SessionRef | undefined =>
+    sprint
+      ? r.sessions?.find((s) => s.name === 'Sprint')
+      : r.sessionKey
+        ? { key: r.sessionKey, name: 'Race', start: r.date }
+        : undefined;
+  const done = (r: Round) => (sprint ? r.sprintDone : r.raceDone);
 
   const rounds =
     wanted[0] === 'all'
-      ? data.rounds.filter((r) => r.raceDone && r.sessionKey && !index.includes(r.sessionKey))
+      ? data.rounds.filter((r) => done(r) && sessionOf(r) && !index.includes(sessionOf(r)!.key))
       : wanted.map((w) => {
           const r = data.rounds.find((x) => x.round === Number(w));
           if (!r) throw new Error(`Etapa ${w} não existe em ${season}`);
@@ -663,11 +712,15 @@ async function main() {
         });
 
   for (const round of rounds) {
+    const session = sessionOf(round);
+    if (!session) {
+      console.error(`Etapa ${round.round}: sem ${sprint ? 'sprint' : 'corrida'} na OpenF1.`);
+      process.exitCode = 1;
+      continue;
+    }
     try {
-      await ingestRace(season, round);
-      if (!index.includes(round.sessionKey!)) index.push(round.sessionKey!);
-      await mkdir(dirname(indexPath), { recursive: true });
-      await writeFile(indexPath, JSON.stringify(index.sort((a, b) => a - b)));
+      await ingestRace(season, round, session);
+      await addToIndex(session.key);
     } catch (err) {
       console.error(`  falhou: ${(err as Error).message}`);
       process.exitCode = 1;
@@ -675,4 +728,5 @@ async function main() {
   }
 }
 
-main();
+// Só roda quando chamado direto, não quando importado por outro script.
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) main();

@@ -39,6 +39,16 @@ export interface TeamStanding {
   wins: number;
 }
 
+/** Uma sessão do fim de semana (treino, classificação, sprint ou corrida). */
+export interface SessionRef {
+  /** session_key na OpenF1. */
+  key: number;
+  /** Nome como vem da OpenF1: "Practice 1", "Qualifying", "Sprint", "Race"... */
+  name: string;
+  /** Início, ISO 8601 em UTC. */
+  start: string;
+}
+
 export interface Round {
   round: number;
   raceName: string;
@@ -56,6 +66,8 @@ export interface Round {
   sprintDone: boolean;
   /** session_key da corrida na OpenF1, usado pela Visão Corrida. */
   sessionKey: number | null;
+  /** Todas as sessões do fim de semana, em ordem. Vazio se a OpenF1 não tem a etapa. */
+  sessions: SessionRef[];
   results: ResultRow[];
   sprintResults: ResultRow[];
   fastestLap: { driverId: string; time: string; lap: number } | null;

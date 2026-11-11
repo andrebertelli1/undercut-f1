@@ -142,6 +142,27 @@ export const ptBR = {
   },
   lapsLeft: (n: number) => (n === 0 ? 'última volta' : n === 1 ? 'falta 1 volta' : `faltam ${n} voltas`),
   openInReplay: 'Abrir este momento no replay',
+
+  // Sessões do fim de semana
+  sessionName: (name: string): string =>
+    ({
+      'Practice 1': 'Treino 1',
+      'Practice 2': 'Treino 2',
+      'Practice 3': 'Treino 3',
+      Qualifying: 'Classificação',
+      'Sprint Qualifying': 'Classificação da sprint',
+      Sprint: 'Sprint',
+      Race: 'Corrida',
+    })[name] ?? name,
+  weekendReplays: 'Replays do fim de semana',
+  minuteOf: (n: number, total: number) => `Minuto ${n}/${total}`,
+  sessionWaiting: 'Antes da sessão',
+  prevMinute: 'Minuto anterior',
+  nextMinute: 'Próximo minuto',
+  legendLeadTimed: 'Troca na ponta da tabela',
+  finalOrder: 'Classificação da sessão',
+  sprintResult: 'Resultado da sprint',
+  keysHintTimed: 'Espaço: tocar/pausar · ← →: 10 s · Shift + ← →: minuto',
   sectorShort: (n: number) => `S${n}`,
   sectorRunning: 'agora',
   currentLap: (n: number) => `Volta ${n} · em andamento`,
@@ -190,6 +211,8 @@ export const ptBR = {
         return 'Abandono';
       case 'finalLaps':
         return 'Reta final';
+      case 'phase':
+        return 'Sessão';
       case 'finish':
         return 'Chegada';
     }
@@ -354,7 +377,7 @@ export const ptBR = {
       case 'vscEnding':
         return 'Safety car virtual terminando';
       case 'red':
-        return 'Bandeira vermelha: corrida interrompida';
+        return 'Bandeira vermelha: sessão interrompida';
       case 'green':
         return 'Bandeira verde: pista liberada';
       case 'chequered':
@@ -381,6 +404,8 @@ export const ptBR = {
       }
       case 'finalLaps':
         return `Últimas ${e.n} voltas`;
+      case 'phase':
+        return `Começa o ${e.reason}`;
       case 'finish':
         return `${who} recebe a bandeirada em primeiro`;
     }

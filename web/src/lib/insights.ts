@@ -122,6 +122,7 @@ export function inferOvertakes(race: RaceData): StoryEvent[] {
 
 /** Todos os acontecimentos da corrida em ordem, com importância e origem. */
 export function buildStory(race: RaceData): StoryEvent[] {
+  if (race.kind === 'timed') return timedStory(race);
   const overtakes = inferOvertakes(race);
   const out: StoryEvent[] = [...overtakes];
 
@@ -173,6 +174,20 @@ export function buildStory(race: RaceData): StoryEvent[] {
     });
   }
 
+  return out.sort((a, b) => a.t - b.t);
+}
+
+/** Treinos e classificação: bandeiras, trocas na ponta da tabela e início das fases. */
+function timedStory(race: RaceData): StoryEvent[] {
+  const out: StoryEvent[] = [];
+  for (const e of race.events) {
+    if (e.kind === 'chequered') continue;
+    if (e.kind === 'lead') out.push({ ...e, importance: 2, source: 'timing' });
+    else out.push({ ...e, importance: OFFICIAL_IMPORTANCE[e.kind] ?? 1, source: 'official' });
+  }
+  for (const p of race.phases ?? []) {
+    out.push({ t: p.from, lap: 0, kind: 'phase', reason: p.name, importance: 3, source: 'official' });
+  }
   return out.sort((a, b) => a.t - b.t);
 }
 

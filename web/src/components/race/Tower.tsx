@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { t as i18n } from '../../i18n/index.ts';
-import { driverColor } from '../../lib/race.ts';
+import { driverColor, formatLapTime } from '../../lib/race.ts';
+import type { TimedRow } from '../../lib/timed.ts';
 import type { FrameRow } from '../../lib/replay.ts';
 
 const COMPOUNDS: Record<string, { letter: string; className: string }> = {
@@ -31,15 +32,25 @@ export function gapText(row: FrameRow, started: boolean): string {
   return `+${row.gap.toFixed(1)}`;
 }
 
+/** Texto da coluna de tempo numa sessão cronometrada. */
+export function timedText(row: TimedRow | undefined): string {
+  if (!row || row.best === null) return '';
+  if (!row.current || row.gap === null || row.gap === 0) return formatLapTime(row.best);
+  return `+${row.gap.toFixed(3)}`;
+}
+
 /** Torre de posições no instante atual do player. */
 export const Tower = memo(function Tower({
   frame,
   started,
+  board,
   selected,
   onSelect,
 }: {
   frame: FrameRow[];
   started: boolean;
+  /** Em treino e classificação: melhor volta de cada piloto, no lugar da distância. */
+  board?: Map<number, TimedRow> | null;
   selected: number | null;
   onSelect: (driver: number | null) => void;
 }) {
@@ -62,7 +73,11 @@ export const Tower = memo(function Tower({
                 <span className="team-stripe" style={{ background: driverColor(driver) }} />
                 <span className="tower-code">{driver.code}</span>
                 {row.inPit && <span className="tag tag-pit">{i18n.pit}</span>}
-                <span className="tower-gap num muted">{gapText(row, started)}</span>
+                <span
+                  className={`tower-gap num ${board && board.get(driver.number)?.current ? '' : 'muted'}`}
+                >
+                  {board ? timedText(board.get(driver.number)) : gapText(row, started)}
+                </span>
                 <Tyre compound={row.compound} age={row.tyreAge} />
               </button>
             </li>
